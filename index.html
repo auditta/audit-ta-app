@@ -168,22 +168,19 @@ function downloadPDF() {
     const name = document.getElementById('empName').value || 'TA_Claim';
     const tableWrapper = document.querySelector('.table-wrapper');
 
-    // Make sure we are viewing the top-left of the screen before snapshot
     window.scrollTo(0, 0);
     tableWrapper.scrollLeft = 0;
     tableWrapper.style.overflowX = 'visible';
 
-    // The magical settings for a perfect Landscape PDF
     const opt = {
-        margin:       0.3, // Small margin
+        margin:       0.3, 
         filename:     `TA_Claim_${name}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true },
-        jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape' } // DEFINITELY LANDSCAPE!
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'landscape' } 
     };
 
     html2pdf().set(opt).from(element).save().then(() => {
-        // Put the scrollbar back for mobile view
         tableWrapper.style.overflowX = 'auto';
     });
 }
@@ -197,18 +194,23 @@ function generateClaim() {
     const nature = document.getElementById('natureOfDuty').value;
     const transit = "Chengannur Bus Stand";
 
-    if (!startInput || d2 <= 8) { alert("Invalid inputs."); return; }
+    if (!startInput || d2 <= 8) { 
+        alert("ശ്രദ്ധിക്കുക: ഡ്യൂട്ടി സ്ഥലത്തേക്കുള്ള ദൂരം 8 കിലോമീറ്ററിൽ കൂടുതലായിരിക്കണം (KSR Rule)."); 
+        return; 
+    }
 
     const startDt = new Date(startInput);
     const endDt = new Date(endInput);
+    
+    // പ്രിൻ്റ് ചെയ്യാൻ വേണ്ടി മാത്രം യാത്രാ സമയം കണക്കാക്കുന്നു
     const busMins = d2 * 4;
     const autoMins = 25;
 
-    let t_arrOffice = new Date(); t_arrOffice.setHours(10, 0, 0);
+    let t_arrOffice = new Date(startDt); t_arrOffice.setHours(10, 0, 0); // 10:00 AM (ഡ്യൂട്ടി സ്റ്റേഷനിൽ എത്തുന്ന സമയം)
     let t_busDep = new Date(t_arrOffice.getTime() - (busMins * 60000));
     let t_resDep = new Date(t_busDep.getTime() - (autoMins * 60000));
 
-    let t_depOffice = new Date(); t_depOffice.setHours(17, 0, 0);
+    let t_depOffice = new Date(endDt); t_depOffice.setHours(17, 0, 0); // 05:00 PM (ഡ്യൂട്ടി സ്റ്റേഷനിൽ നിന്നും ഇറങ്ങുന്ന സമയം)
     let t_busRetArr = new Date(t_depOffice.getTime() + (busMins * 60000));
     let t_resRetArr = new Date(t_busRetArr.getTime() + (autoMins * 60000));
 
@@ -217,43 +219,84 @@ function generateClaim() {
     const t_strBusArr = timeToString(t_busRetArr);
     const t_strResArr = timeToString(t_resRetArr);
 
-    let tbody = "", grandTotal = 0, breakdownHtml = "<strong>DA Calculation :</strong><br>";
+    let tbody = "", grandTotal = 0, breakdownHtml = "<strong>DA Calculation Breakdown:</strong><br>";
 
+    // ഹെഡ്ക്വാർട്ടേഴ്സിൽ നിന്നും 32 കിലോമീറ്ററിൽ കൂടുതലും, ഒന്നിലധികം ദിവസവും ഉണ്ടെങ്കിൽ (Halt)
     if (d2 > 32 && startInput !== endInput) {
-        let totalHrs = (new Date(endDt.getTime() + (17*3600000)) - new Date(startDt.getTime() + (10*3600000))) / 3600000;
-        let daCount = (totalHrs >= 12 && totalHrs <= 24) ? 1 : (totalHrs > 24 ? 1 + Math.floor((totalHrs - 24) / 6) * 0.5 : 0.5);
+        
+        // യാത്രാസമയം ഒഴിവാക്കി, ഡ്യൂട്ടി സ്റ്റേഷനിലെ സമയം മാത്രം എടുക്കുന്നു 
+        // (ആദ്യ ദിവസം 10:00 AM മുതൽ അവസാന ദിവസം 05:00 PM വരെ)
+        let totalHrs = (t_depOffice.getTime() - t_arrOffice.getTime()) / 3600000;
+        
+        let daBlocks = Math.floor(totalHrs / 24);
+        let remainderHours = totalHrs % 24;
+        let extraDa = 0;
+        
+        if (remainderHours > 12) { extraDa = 1; } 
+        else if (remainderHours >= 6) { extraDa = 0.5; }
+        
+        let daCount = daBlocks + extraDa;
+
         let busFare = d2 * 2.5;
         let totalDAAmount = daCount * daRate;
-        grandTotal = (80 + busFare) * 2 + totalDAAmount;
+        let totalFare = (80 + busFare) * 2;
+        grandTotal = totalFare + totalDAAmount;
 
         tbody += `<tr><td>${startDt.toLocaleDateString('en-GB')}</td><td>Residence to ${transit}</td><td>${t_strResDep}</td><td>${t_strBusDep}</td><td>8km</td><td>Auto</td><td>80.00</td><td></td><td></td></tr>`;
         tbody += `<tr><td></td><td>${transit} to ${dutyStation}</td><td>${t_strBusDep}</td><td>10:00 AM</td><td>${d2}km</td><td>Bus</td><td>${busFare.toFixed(2)}</td><td></td><td></td></tr>`;
         tbody += `<tr style="background:#f9f9f9;"><td colspan="9"><b>HALT AT ${dutyStation.toUpperCase()}</b></td></tr>`;
         tbody += `<tr><td>${endDt.toLocaleDateString('en-GB')}</td><td>${dutyStation} to ${transit}</td><td>05:00 PM</td><td>${t_strBusArr}</td><td>${d2}km</td><td>Bus</td><td>${busFare.toFixed(2)}</td><td></td><td></td></tr>`;
         tbody += `<tr><td></td><td>${transit} to Residence</td><td>${t_strBusArr}</td><td>${t_strResArr}</td><td>8km</td><td>Auto</td><td>80.00</td><td>₹${totalDAAmount.toFixed(2)}</td><td><b>₹${grandTotal.toFixed(2)}</b></td></tr>`;
-        breakdownHtml += `Halt Period: ${totalHrs.toFixed(1)} hrs. DA: ${daCount} × ₹${daRate} = ₹${totalDAAmount.toFixed(2)}.`;
+        
+        breakdownHtml += `Duty Station Time Only (Arrival to Departure): ${totalHrs.toFixed(1)} hrs.<br> Calculation: ${daBlocks} Full DA + ${extraDa} Extra DA = ${daCount} DA.<br> ${daCount} × ₹${daRate} = ₹${totalDAAmount.toFixed(2)}.`;
     } 
     else {
+        // Daily Return (ദിവസവും പോയിവരുന്ന രീതി - 32 കിലോമീറ്ററിൽ താഴെ)
+        
+        // യാത്രാസമയം ഒഴിവാക്കി, 10:00 AM മുതൽ 05:00 PM വരെയുള്ള സമയം മാത്രം (7 മണിക്കൂർ)
+        let totalTripHours = (17 - 10); // 7 Hours
+        
+        let dailyDA = 0;
+        let daString = "";
+        if (totalTripHours > 12) { dailyDA = daRate; daString = "1 DA"; } 
+        else if (totalTripHours >= 6) { dailyDA = daRate / 2; daString = "1/2 DA"; } 
+        else { dailyDA = 0; daString = "0 DA"; }
+
+        let busFare = (d2 * 2.5);
+        let totalFare = (80 + busFare) * 2;
+        let dailyTotal = 0;
+        let remark = "";
+
+        // 32 കി.മീ ലിമിറ്റ് പരിശോധന 
+        if (d2 <= 32) {
+            dailyTotal = dailyDA; 
+            remark = "TA Limited to " + daString;
+        } else {
+            if (totalFare > dailyDA) {
+                dailyTotal = totalFare; 
+                remark = "Actual Fare Claimed";
+            } else {
+                dailyTotal = dailyDA; 
+                remark = "TA Limited to " + daString;
+            }
+        }
+
         let curr = new Date(startDt);
         while (curr <= endDt) {
-            let busFare = (d2 * 2.5);
-            let dailyTotal = (d2 > 32) ? (160 + busFare * 2) : (daRate / 2);
-            let remark = (d2 > 32) ? " Mileage Claimed." : "TA Limited to Half DA Admissible.";
-            
             tbody += `<tr style="border-top: 1.5px solid #000;"><td>${curr.toLocaleDateString('en-GB')}</td><td>Residence to ${transit}</td><td>${t_strResDep}</td><td>${t_strBusDep}</td><td>8km</td><td>Auto</td><td>80.00</td><td></td><td></td></tr>`;
             tbody += `<tr><td></td><td>${transit} to ${dutyStation}</td><td>${t_strBusDep}</td><td>10:00 AM</td><td>${d2}km</td><td>Bus</td><td>${busFare.toFixed(2)}</td><td></td><td></td></tr>`;
             tbody += `<tr><td></td><td>${dutyStation} to ${transit}</td><td>05:00 PM</td><td>${t_strBusArr}</td><td>${d2}km</td><td>Bus</td><td>${busFare.toFixed(2)}</td><td></td><td></td></tr>`;
             tbody += `<tr><td></td><td>${transit} to Residence</td><td>${t_strBusArr}</td><td>${t_strResArr}</td><td>8km</td><td>Auto</td><td>80.00</td><td>₹${dailyTotal.toFixed(2)}</td><td><b>₹${dailyTotal.toFixed(2)}</b></td></tr>`;
-            tbody += `<tr><td colspan="9" style="font-size:9px; text-align:left; color:#666; padding:2px;"><i>* ${remark}</i></td></tr>`;
+            tbody += `<tr><td colspan="9" style="font-size:9px; text-align:left; color:#666; padding:2px;"><i>* ${remark} (Duty Station Time: ${totalTripHours.toFixed(1)} Hrs)</i></td></tr>`;
             
             grandTotal += dailyTotal;
             curr.setDate(curr.getDate() + 1);
         }
-        breakdownHtml = "Daily trips calculation applied.";
+        breakdownHtml += `Daily Duty Time (10 AM - 5 PM): ${totalTripHours.toFixed(1)} Hrs. Result: ${remark}.`;
     }
 
     document.getElementById('outName').innerText = document.getElementById('empName').value + ", " + document.getElementById('designation').value;
-    document.getElementById('outPay').innerText = document.getElementById('basicPay').value;
+    document.getElementById('outPay').innerText = document.getElementById('basicPay').value || "Refer Master Data";
     document.getElementById('outDuty').innerText = nature + " at " + dutyStation;
     document.getElementById('tableBody').innerHTML = tbody;
     document.getElementById('outTotal').innerText = grandTotal.toFixed(2);
